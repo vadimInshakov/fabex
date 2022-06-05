@@ -106,8 +106,10 @@ func main() {
 		wg.Add(1)
 		go func(ch string, wg *sync.WaitGroup) {
 			defer wg.Done()
+			l.Info("start processor", zap.String("channel", ch))
 			if err := engine.Run(ctx); err != nil {
 				l.Error("engine error", zap.Error(err), zap.String("channel", ch))
+				cancel()
 			}
 		}(ch, &wg)
 	}
@@ -128,8 +130,13 @@ func main() {
 
 	interruptCh := make(chan os.Signal, 1)
 	signal.Notify(interruptCh, os.Interrupt, syscall.SIGTERM, os.Interrupt)
-	s := <-interruptCh
-	l.Info("os signal received, shutdown", zap.String("signal", s.String()))
+	select {
+	case s := <-interruptCh:
+		l.Info("os signal received, shutdown", zap.String("signal", s.String()))
+	case <-ctx.Done():
+		l.Info("context cancelled, shutdown")
+	}
+
 	cancel()
 	wg.Wait()
 }
